@@ -7,6 +7,7 @@ import (
 )
 
 type Quote struct {
+	idx              int
 	raw              string
 	author           string
 	authorLowercase  string
@@ -14,8 +15,8 @@ type Quote struct {
 	contentLowercase string
 }
 
-func NewQuote(raw string) *Quote {
-	quote := Quote{raw: raw}
+func NewQuote(idx int, raw string) *Quote {
+	quote := Quote{idx: idx, raw: raw}
 
 	parts := strings.SplitN(raw, ":", 2)
 	if len(parts) == 2 {
@@ -75,7 +76,7 @@ func (q *Quote) toString() string {
 		return q.content
 	}
 
-	return fmt.Sprintf("%s: %s", q.author, q.content)
+	return fmt.Sprintf("(#%04d) %s: %s", q.idx, q.author, q.content)
 }
 
 func (q *Quote) toDiscordString() string {

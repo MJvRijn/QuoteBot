@@ -76,7 +76,7 @@ func (q *Quotes) loadQuote(quoteString string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	quote := NewQuote(quoteString)
+	quote := NewQuote(len(q.quotes)+1, quoteString)
 	q.quotes = append(q.quotes, quote)
 
 	for _, author := range quote.getAuthors() {
@@ -107,28 +107,34 @@ func (q *Quotes) getRandomQuote() *Quote {
 	return q.pickRandomQuote(candidates)
 }
 
-func (q *Quotes) getQuoteAbout(subject string) *Quote {
+func (q *Quotes) getQuoteAbout(query string) *Quote {
+	var candidates = q.getAllQuotesAbout(query)
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	return q.pickRandomQuote(candidates)
+}
+
+func (q *Quotes) getAllQuotesAbout(query string) []*Quote {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	subject = strings.ToLower(subject)
+	query = strings.ToLower(query)
 
 	var candidates []*Quote
 	for _, quote := range q.quotes {
-		if quote.matchContent(subject) {
+		if quote.matchContent(query) {
 			candidates = append(candidates, quote)
 		}
 	}
 
-	if len(candidates) == 0 {
-		return nil
-	}
-
-	return q.pickRandomQuote(candidates)
+	return candidates
 }
 
 func (q *Quotes) getQuoteBy(query string) *Quote {
-	candidates := q.getQuoteByCandidates(query)
+	candidates := q.getAllQuotesBy(query)
 
 	if len(candidates) == 0 {
 		return nil
@@ -137,7 +143,7 @@ func (q *Quotes) getQuoteBy(query string) *Quote {
 	return q.pickRandomQuote(candidates)
 }
 
-func (q *Quotes) getQuoteByCandidates(query string) []*Quote {
+func (q *Quotes) getAllQuotesBy(query string) []*Quote {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 

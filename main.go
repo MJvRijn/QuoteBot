@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -30,29 +31,43 @@ func main() {
 		handleError(err, true)
 	}
 
+	authorOption := &discordgo.ApplicationCommandOption{
+		Type:        discordgo.ApplicationCommandOptionString,
+		Required:    true,
+		Name:        "name",
+		Description: "Name of person who was quoted",
+	}
+
+	subjectOption := &discordgo.ApplicationCommandOption{
+		Type:        discordgo.ApplicationCommandOptionString,
+		Required:    true,
+		Name:        "content",
+		Description: "Content of the quote",
+	}
+
 	_, err = discord.ApplicationCommandBulkOverwrite(os.Getenv("DISCORD_APP_ID"), "", []*discordgo.ApplicationCommand{{
 		Name:        "quote",
-		Description: "Show a quote",
+		Description: "Get quotes",
 		Options: []*discordgo.ApplicationCommandOption{{
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
-			Name:        "by",
-			Description: "Show a quote by someone",
-			Options: []*discordgo.ApplicationCommandOption{{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Required:    true,
-				Name:        "author",
-				Description: "Author of the quote",
-			}},
+			Name:        "from",
+			Description: "Show a quote from a specific person",
+			Options:     []*discordgo.ApplicationCommandOption{authorOption},
 		}, {
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Name:        "about",
-			Description: "Show a quote about something",
-			Options: []*discordgo.ApplicationCommandOption{{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Required:    true,
-				Name:        "subject",
-				Description: "Subject of the quote",
-			}},
+			Description: "Show a quote about a specific subject",
+			Options:     []*discordgo.ApplicationCommandOption{subjectOption},
+		}, {
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "listfrom",
+			Description: "List all quotes from a specific person",
+			Options:     []*discordgo.ApplicationCommandOption{authorOption},
+		}, {
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "listabout",
+			Description: "List all quotes about a specific subject",
+			Options:     []*discordgo.ApplicationCommandOption{subjectOption},
 		}, {
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Name:        "random",
@@ -95,36 +110,55 @@ func handleQuoteCommand(session *discordgo.Session, interaction *discordgo.Inter
 	data := interaction.ApplicationCommandData()
 	subcommand := data.Options[0]
 
-	var quote *Quote
+	var selectedQuotes []*Quote
 	switch subcommand.Name {
 	case "about":
-		quote = quotes.getQuoteAbout(subcommand.Options[0].StringValue())
-	case "by":
-		quote = quotes.getQuoteBy(subcommand.Options[0].StringValue())
+		quote := quotes.getQuoteAbout(subcommand.Options[0].StringValue())
+		selectedQuotes = append(selectedQuotes, quote)
+	case "from":
+		quote := quotes.getQuoteBy(subcommand.Options[0].StringValue())
+		selectedQuotes = append(selectedQuotes, quote)
 	case "random":
-		quote = quotes.getRandomQuote()
-	}
-
-	var content = "I wasn't able to find a matching quote"
-	if quote != nil {
-		content = quote.toDiscordString()
+		quote := quotes.getRandomQuote()
+		selectedQuotes = append(selectedQuotes, quote)
+	case "listfrom":
+		selectedQuotes = quotes.getAllQuotesBy(subcommand.Options[0].StringValue())
+	case "listabout":
+		selectedQuotes = quotes.getAllQuotesAbout(subcommand.Options[0].StringValue())
 	}
 
 	response := &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: content,
-		},
+		Data: &discordgo.InteractionResponseData{},
 	}
 
-	if quote == nil {
+	var content, logQuote string
+	if len(selectedQuotes) == 1 {
+		content = selectedQuotes[0].toDiscordString()
+		logQuote = selectedQuotes[0].toString()
+	} else if len(selectedQuotes) > 1 {
+		content = fmt.Sprintf("I found %d quotes:\n```\n", len(selectedQuotes))
+		for _, quote := range selectedQuotes {
+			content += quote.toString() + "\n"
+			if len(content) >= 1500 {
+				content += "And more...\n"
+				break
+			}
+		}
+		content += "\n```"
+		logQuote = "Multiple quotes"
+		response.Data.Flags |= discordgo.MessageFlagsEphemeral
+	} else {
+		content = "I wasn't able to find a matching quote"
+		logQuote = "No quotes"
 		response.Data.Flags |= discordgo.MessageFlagsEphemeral
 	}
+	response.Data.Content = content
 
 	slog.Info("Processed quote command",
 		slog.String("subcommand", subcommand.Name),
 		slog.Duration("duration", time.Since(start)),
-		slog.String("quote", quote.toString()))
+		slog.String("quote", logQuote))
 
 	err := session.InteractionRespond(interaction.Interaction, response)
 	if err != nil {
