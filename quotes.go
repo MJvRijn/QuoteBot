@@ -13,14 +13,18 @@ import (
 )
 
 type Quotes struct {
-	mu     sync.RWMutex
-	source string
-	quotes []*Quote
+	mu           sync.RWMutex
+	source       string
+	quotes       []*Quote
+	authorMap    map[string][]*Quote
+	recentQuotes map[*Quote]bool
 }
 
 func NewQuotes(ctx context.Context, source string) (*Quotes, error) {
 	quotes := &Quotes{
-		source: source,
+		source:       source,
+		authorMap:    map[string][]*Quote{},
+		recentQuotes: map[*Quote]bool{},
 	}
 
 	if err := quotes.update(); err != nil {
@@ -74,6 +78,10 @@ func (q *Quotes) loadQuote(quoteString string) {
 
 	quote := NewQuote(quoteString)
 	q.quotes = append(q.quotes, quote)
+
+	for _, author := range quote.getAuthors() {
+		q.authorMap[author] = append(q.authorMap[author], quote)
+	}
 }
 
 func (q *Quotes) clearQuotes() {
@@ -81,6 +89,8 @@ func (q *Quotes) clearQuotes() {
 	defer q.mu.Unlock()
 
 	q.quotes = nil
+	clear(q.authorMap)
+	clear(q.recentQuotes)
 }
 
 func (q *Quotes) getRandomQuote() *Quote {
@@ -91,10 +101,10 @@ func (q *Quotes) getRandomQuote() *Quote {
 		return nil
 	}
 
-	options := make([]*Quote, len(q.quotes))
-	copy(options, q.quotes)
+	candidates := make([]*Quote, len(q.quotes))
+	copy(candidates, q.quotes)
 
-	return pickRandomQuote(options)
+	return q.pickRandomQuote(candidates)
 }
 
 func (q *Quotes) getQuoteAbout(subject string) *Quote {
@@ -103,41 +113,83 @@ func (q *Quotes) getQuoteAbout(subject string) *Quote {
 
 	subject = strings.ToLower(subject)
 
-	var options []*Quote
+	var candidates []*Quote
 	for _, quote := range q.quotes {
 		if quote.matchContent(subject) {
-			options = append(options, quote)
+			candidates = append(candidates, quote)
 		}
 	}
 
-	if len(options) == 0 {
+	if len(candidates) == 0 {
 		return nil
 	}
 
-	return pickRandomQuote(options)
+	return q.pickRandomQuote(candidates)
 }
 
-func (q *Quotes) getQuoteBy(author string) *Quote {
+func (q *Quotes) getQuoteBy(query string) *Quote {
+	candidates := q.getQuoteByCandidates(query)
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	return q.pickRandomQuote(candidates)
+}
+
+func (q *Quotes) getQuoteByCandidates(query string) []*Quote {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	author = strings.ToLower(author)
+	query = strings.ToLower(strings.TrimSpace(query))
+	indexQuery := toIndexString(query)
 
-	var options []*Quote
-	for _, quote := range q.quotes {
-		if quote.matchAuthor(author) {
-			options = append(options, quote)
+	// 1. Exact match of query
+	if quotes, match := q.authorMap[query]; match {
+		return quotes
+	}
+
+	// 2. Exact match of index string
+	if quotes, match := q.authorMap[indexQuery]; match {
+		return quotes
+	}
+
+	var candidates []*Quote
+
+	// 3. Partial match from start
+	for author, quotes := range q.authorMap {
+		if strings.HasPrefix(author, indexQuery) {
+			candidates = append(candidates, quotes...)
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates
+	}
+
+	// 4. Partial match from centre
+	for author, quotes := range q.authorMap {
+		if strings.Contains(author, indexQuery) {
+			candidates = append(candidates, quotes...)
 		}
 	}
 
-	if len(options) == 0 {
-		return nil
-	}
-
-	return pickRandomQuote(options)
+	return candidates
 }
 
-func pickRandomQuote(options []*Quote) *Quote {
-	quoteIdx := rand.Intn(len(options))
-	return options[quoteIdx]
+func (q *Quotes) pickRandomQuote(candidates []*Quote) *Quote {
+	rand.Shuffle(len(candidates), func(i, j int) { candidates[i], candidates[j] = candidates[j], candidates[i] })
+
+	// Check whether the quote has recently been selected
+	for _, quote := range candidates {
+		if !q.recentQuotes[quote] {
+			q.recentQuotes[quote] = true
+			return quote
+		}
+	}
+
+	// All quotes have recently been used, reset
+	clear(q.recentQuotes)
+	quote := candidates[0]
+	q.recentQuotes[quote] = true
+	return quote
 }
