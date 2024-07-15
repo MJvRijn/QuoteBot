@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -127,36 +128,50 @@ func handleQuoteCommand(session *discordgo.Session, interaction *discordgo.Inter
 		selectedQuotes = quotes.getAllQuotesAbout(subcommand.Options[0].StringValue())
 	}
 
+	sort.Slice(selectedQuotes, func(i, j int) bool {
+		return selectedQuotes[i].idx < selectedQuotes[j].idx
+	})
+
 	response := &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{},
 	}
 
 	var content, logQuote string
-	if len(selectedQuotes) == 1 {
+	if len(selectedQuotes) == 0 {
+		content = "I wasn't able to find a matching quote"
+		logQuote = "No quotes"
+		response.Data.Flags |= discordgo.MessageFlagsEphemeral
+	} else if len(selectedQuotes) == 1 && !strings.Contains(subcommand.Name, "list") {
 		content = selectedQuotes[0].toDiscordString()
 		logQuote = selectedQuotes[0].toString()
-	} else if len(selectedQuotes) > 1 {
-		content = fmt.Sprintf("I found %d quotes:\n```\n", len(selectedQuotes))
+	} else {
+		content = fmt.Sprintf("I found %d quote(s):\n```\n", len(selectedQuotes))
 		for _, quote := range selectedQuotes {
-			content += quote.toString() + "\n"
-			if len(content) >= 1500 {
-				content += "And more...\n"
+			quoteStr := quote.toString()
+			if len(content)+len(quoteStr)+1 <= 1969 {
+				content += quoteStr + "\n"
+			} else {
+				content += "And more that don't fit...\n"
 				break
 			}
 		}
 		content += "\n```"
 		logQuote = "Multiple quotes"
 		response.Data.Flags |= discordgo.MessageFlagsEphemeral
-	} else {
-		content = "I wasn't able to find a matching quote"
-		logQuote = "No quotes"
-		response.Data.Flags |= discordgo.MessageFlagsEphemeral
 	}
 	response.Data.Content = content
 
+	var userName string
+	if interaction.Member != nil && interaction.Member.User != nil {
+		userName = interaction.Member.User.Username
+	} else if interaction.User != nil {
+		userName = interaction.User.Username
+	}
+
 	slog.Info("Processed quote command",
 		slog.String("subcommand", subcommand.Name),
+		slog.String("user", userName),
 		slog.Duration("duration", time.Since(start)),
 		slog.String("quote", logQuote))
 

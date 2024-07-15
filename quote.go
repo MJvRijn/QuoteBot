@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/JohannesKaufmann/html-to-markdown/escape"
 )
 
 type Quote struct {
@@ -18,7 +20,7 @@ type Quote struct {
 func NewQuote(idx int, raw string) *Quote {
 	quote := Quote{idx: idx, raw: raw}
 
-	parts := strings.SplitN(raw, ":", 2)
+	parts := strings.SplitN(raw, ": ", 2)
 	if len(parts) == 2 {
 		quote.author = strings.TrimSpace(parts[0])
 		quote.content = strings.TrimSpace(parts[1])
@@ -73,7 +75,7 @@ func (q *Quote) toString() string {
 	}
 
 	if q.author == "" {
-		return q.content
+		return fmt.Sprintf("(#%04d) %s", q.idx, q.content)
 	}
 
 	return fmt.Sprintf("(#%04d) %s: %s", q.idx, q.author, q.content)
@@ -81,8 +83,12 @@ func (q *Quote) toString() string {
 
 func (q *Quote) toDiscordString() string {
 	if q.author == "" {
-		return fmt.Sprintf(">>> %s", q.content)
+		return fmt.Sprintf(">>> %s", escapeMarkdown(q.content))
 	}
 
-	return fmt.Sprintf(">>> **%s**:\n%s", q.author, q.content)
+	return fmt.Sprintf(">>> **%s**:\n%s", escapeMarkdown(q.author), escapeMarkdown(q.content))
+}
+
+func escapeMarkdown(str string) string {
+	return escape.MarkdownCharacters(str)
 }
