@@ -114,14 +114,17 @@ func handleQuoteCommand(session *discordgo.Session, interaction *discordgo.Inter
 	var selectedQuotes []*Quote
 	switch subcommand.Name {
 	case "about":
-		quote := quotes.getQuoteAbout(subcommand.Options[0].StringValue())
-		selectedQuotes = append(selectedQuotes, quote)
+		if quote := quotes.getQuoteAbout(subcommand.Options[0].StringValue()); quote != nil {
+			selectedQuotes = append(selectedQuotes, quote)
+		}
 	case "from":
-		quote := quotes.getQuoteBy(subcommand.Options[0].StringValue())
-		selectedQuotes = append(selectedQuotes, quote)
+		if quote := quotes.getQuoteBy(subcommand.Options[0].StringValue()); quote != nil {
+			selectedQuotes = append(selectedQuotes, quote)
+		}
 	case "random":
-		quote := quotes.getRandomQuote()
-		selectedQuotes = append(selectedQuotes, quote)
+		if quote := quotes.getRandomQuote(); quote != nil {
+			selectedQuotes = append(selectedQuotes, quote)
+		}
 	case "listfrom":
 		selectedQuotes = quotes.getAllQuotesBy(subcommand.Options[0].StringValue())
 	case "listabout":

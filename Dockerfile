@@ -11,7 +11,7 @@ COPY . .
 ENV CGO_ENABLED 0
 ENV GOOS linux
 ENV GOARCH amd64
-RUN go build -ldflags "-s -w -X 'github.com/mjvrijn/quotebot/main.Version=`git describe --tags --abbrev=0`'" -o /app/quotebot
+RUN go build -ldflags "-s -w -X 'main.Version=`git describe --tags --abbrev=0`'" -o /app/quotebot
 
 FROM --platform=linux/amd64 alpine
 WORKDIR /app
