@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,7 +77,7 @@ func (q *Quotes) loadQuote(quoteString string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	quote := NewQuote(len(q.quotes)+1, quoteString)
+	quote := NewQuote(len(q.quotes), quoteString)
 	q.quotes = append(q.quotes, quote)
 
 	for _, author := range quote.getAuthors() {
@@ -141,6 +142,18 @@ func (q *Quotes) getQuoteBy(query string) *Quote {
 	}
 
 	return q.pickRandomQuote(candidates)
+}
+
+func (q *Quotes) getQuoteById(id string) *Quote {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	if val, err := strconv.ParseInt(id, 10, 64); err != nil {
+		return nil
+	} else if int(val) < len(q.quotes) {
+		return q.quotes[val]
+	}
+	return nil
 }
 
 func (q *Quotes) getAllQuotesBy(query string) []*Quote {

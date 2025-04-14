@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -46,6 +47,20 @@ func main() {
 		Description: "Content of the quote",
 	}
 
+	idOption := &discordgo.ApplicationCommandOption{
+		Type:        discordgo.ApplicationCommandOptionString,
+		Required:    true,
+		Name:        "id",
+		Description: "ID of the quote",
+	}
+
+	startFrom := &discordgo.ApplicationCommandOption{
+		Type:        discordgo.ApplicationCommandOptionString,
+		Required:    false,
+		Name:        "startfrom",
+		Description: "Minimum ID of the quote to list",
+	}
+
 	_, err = discord.ApplicationCommandBulkOverwrite(os.Getenv("DISCORD_APP_ID"), "", []*discordgo.ApplicationCommand{{
 		Name:        "quote",
 		Description: "Get quotes",
@@ -63,12 +78,17 @@ func main() {
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Name:        "listfrom",
 			Description: "List all quotes from a specific person",
-			Options:     []*discordgo.ApplicationCommandOption{authorOption},
+			Options:     []*discordgo.ApplicationCommandOption{authorOption, startFrom},
 		}, {
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Name:        "listabout",
 			Description: "List all quotes about a specific subject",
-			Options:     []*discordgo.ApplicationCommandOption{subjectOption},
+			Options:     []*discordgo.ApplicationCommandOption{subjectOption, startFrom},
+		}, {
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "id",
+			Description: "Show a specific quote by quote id",
+			Options:     []*discordgo.ApplicationCommandOption{idOption},
 		}, {
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Name:        "random",
@@ -121,14 +141,24 @@ func handleQuoteCommand(session *discordgo.Session, interaction *discordgo.Inter
 		if quote := quotes.getQuoteBy(subcommand.Options[0].StringValue()); quote != nil {
 			selectedQuotes = append(selectedQuotes, quote)
 		}
+	case "id":
+		if quote := quotes.getQuoteById(subcommand.Options[0].StringValue()); quote != nil {
+			selectedQuotes = append(selectedQuotes, quote)
+		}
 	case "random":
 		if quote := quotes.getRandomQuote(); quote != nil {
 			selectedQuotes = append(selectedQuotes, quote)
 		}
 	case "listfrom":
 		selectedQuotes = quotes.getAllQuotesBy(subcommand.Options[0].StringValue())
+		if len(subcommand.Options) > 1 {
+			selectedQuotes = filterOldQuotes(selectedQuotes, subcommand.Options[1].StringValue())
+		}
 	case "listabout":
 		selectedQuotes = quotes.getAllQuotesAbout(subcommand.Options[0].StringValue())
+		if len(subcommand.Options) > 1 {
+			selectedQuotes = filterOldQuotes(selectedQuotes, subcommand.Options[1].StringValue())
+		}
 	}
 
 	sort.Slice(selectedQuotes, func(i, j int) bool {
@@ -152,10 +182,10 @@ func handleQuoteCommand(session *discordgo.Session, interaction *discordgo.Inter
 		content = fmt.Sprintf("I found %d quote(s):\n```\n", len(selectedQuotes))
 		for _, quote := range selectedQuotes {
 			quoteStr := quote.toString()
-			if len(content)+len(quoteStr)+1 <= 1969 {
+			if len(content)+len(quoteStr)+1 <= 1958 {
 				content += quoteStr + "\n"
 			} else {
-				content += "And more that don't fit...\n"
+				content += "Use the startfrom option to view more.\n"
 				break
 			}
 		}
@@ -196,4 +226,20 @@ var indexStringRegex = regexp.MustCompile(`[^a-zA-Z ]+`)
 func toIndexString(author string) string {
 	author = strings.TrimSpace(author)
 	return indexStringRegex.ReplaceAllString(author, "")
+}
+
+func filterOldQuotes(quotes []*Quote, startFrom string) []*Quote {
+	var minIndex = 0
+	if startFrom != "" {
+		if val, err := strconv.ParseInt(startFrom, 10, 64); err == nil {
+			minIndex = int(val)
+		}
+	}
+	var filteredQuotes []*Quote
+	for _, quote := range quotes {
+		if quote.idx >= minIndex {
+			filteredQuotes = append(filteredQuotes, quote)
+		}
+	}
+	return filteredQuotes
 }
